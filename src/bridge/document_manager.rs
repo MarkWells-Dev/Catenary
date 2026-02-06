@@ -215,6 +215,7 @@ fn detect_language_id(path: &Path) -> &'static str {
         Some("css") => "css",
         Some("lua") => "lua",
         Some("sql") => "sql",
+        Some("php") => "php",
         _ => "plaintext",
     }
 }
@@ -328,6 +329,7 @@ mod tests {
         assert_eq!(detect_language_id(Path::new("test.go")), "go");
         assert_eq!(detect_language_id(Path::new("test.sh")), "shellscript");
         assert_eq!(detect_language_id(Path::new("test.bash")), "shellscript");
+        assert_eq!(detect_language_id(Path::new("test.php")), "php");
         assert_eq!(detect_language_id(Path::new("test.unknown")), "plaintext");
         assert_eq!(detect_language_id(Path::new("noextension")), "plaintext");
     }
