@@ -102,7 +102,11 @@ async fn test_bash_lsp_hover() {
     client.initialize(dir.path()).await.unwrap();
 
     // Open the document
-    let uri: lsp_types::Uri = format!("file://{}", script_path.display()).parse().unwrap();
+    let uri: lsp_types::Uri = url::Url::from_file_path(&script_path)
+        .unwrap()
+        .as_str()
+        .parse()
+        .unwrap();
     client
         .did_open(lsp_types::DidOpenTextDocumentParams {
             text_document: lsp_types::TextDocumentItem {
@@ -180,7 +184,11 @@ async fn test_document_lifecycle() {
 
     client.initialize(dir.path()).await.unwrap();
 
-    let uri: lsp_types::Uri = format!("file://{}", script_path.display()).parse().unwrap();
+    let uri: lsp_types::Uri = url::Url::from_file_path(&script_path)
+        .unwrap()
+        .as_str()
+        .parse()
+        .unwrap();
 
     // Open
     client
@@ -291,7 +299,11 @@ edition = "2021"
     client.initialize(dir.path()).await.unwrap();
     client.wait_ready().await;
 
-    let uri: lsp_types::Uri = format!("file://{}", main_rs.display()).parse().unwrap();
+    let uri: lsp_types::Uri = url::Url::from_file_path(&main_rs)
+        .unwrap()
+        .as_str()
+        .parse()
+        .unwrap();
     client
         .did_open(lsp_types::DidOpenTextDocumentParams {
             text_document: lsp_types::TextDocumentItem {
@@ -368,7 +380,11 @@ async fn test_yaml_lsp_hover() {
 
     client.initialize(dir.path()).await.unwrap();
 
-    let uri: lsp_types::Uri = format!("file://{}", yaml_path.display()).parse().unwrap();
+    let uri: lsp_types::Uri = url::Url::from_file_path(&yaml_path)
+        .unwrap()
+        .as_str()
+        .parse()
+        .unwrap();
     client
         .did_open(lsp_types::DidOpenTextDocumentParams {
             text_document: lsp_types::TextDocumentItem {

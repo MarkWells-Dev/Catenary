@@ -615,7 +615,7 @@ impl LspBridgeHandler {
         if let Some(response) = response
             && let Some(position) = find_symbol_in_document_response(&response, symbol)
         {
-            let file_path = std::path::PathBuf::from(uri.path().as_str());
+            let file_path = uri_to_path(&uri)?;
             return Ok(Some((file_path, position)));
         }
         Ok(None)
@@ -2046,7 +2046,7 @@ fn find_symbol_in_workspace_response(
                 .iter()
                 .find(|s| s.name == name)
                 .or_else(|| symbols.iter().find(|s| s.name.contains(name)))?;
-            let path = std::path::PathBuf::from(symbol.location.uri.path().as_str());
+            let path = uri_to_path(&symbol.location.uri).ok()?;
             Some((path, symbol.location.range.start))
         }
         WorkspaceSymbolResponse::Nested(symbols) => {
@@ -2056,7 +2056,7 @@ fn find_symbol_in_workspace_response(
                 .or_else(|| symbols.iter().find(|s| s.name.contains(name)))?;
             match &symbol.location {
                 lsp_types::OneOf::Left(location) => {
-                    let path = std::path::PathBuf::from(location.uri.path().as_str());
+                    let path = uri_to_path(&location.uri).ok()?;
                     Some((path, location.range.start))
                 }
                 lsp_types::OneOf::Right(_) => None, // URI-only location, can't get position
@@ -2066,14 +2066,18 @@ fn find_symbol_in_workspace_response(
 }
 
 fn format_location(location: &Location) -> String {
-    let path = location.uri.path();
+    let path = uri_to_path(&location.uri)
+        .map(|p| p.to_string_lossy().to_string())
+        .unwrap_or_else(|_| location.uri.path().to_string());
     let line = location.range.start.line + 1;
     let col = location.range.start.character + 1;
     format!("{}:{}:{}", path, line, col)
 }
 
 fn format_location_link(link: &LocationLink) -> String {
-    let path = link.target_uri.path();
+    let path = uri_to_path(&link.target_uri)
+        .map(|p| p.to_string_lossy().to_string())
+        .unwrap_or_else(|_| link.target_uri.path().to_string());
     let line = link.target_range.start.line + 1;
     let col = link.target_range.start.character + 1;
     format!("{}:{}:{}", path, line, col)
@@ -2554,11 +2558,7 @@ async fn apply_workspace_edit(edit: &WorkspaceEdit, encoding: PositionEncodingKi
 
     if let Some(changes) = &edit.changes {
         for (uri, edits) in changes {
-            let url = url::Url::parse(uri.as_str())
-                .map_err(|_| anyhow!("Invalid URI: {}", uri.as_str()))?;
-            let path = url
-                .to_file_path()
-                .map_err(|_| anyhow!("Invalid file URI: {}", uri.as_str()))?;
+            let path = uri_to_path(uri)?;
             file_edits
                 .entry(path)
                 .or_default()
@@ -2570,12 +2570,7 @@ async fn apply_workspace_edit(edit: &WorkspaceEdit, encoding: PositionEncodingKi
         match doc_changes {
             DocumentChanges::Edits(edits) => {
                 for edit in edits {
-                    let uri = &edit.text_document.uri;
-                    let url = url::Url::parse(uri.as_str())
-                        .map_err(|_| anyhow!("Invalid URI: {}", uri.as_str()))?;
-                    let path = url
-                        .to_file_path()
-                        .map_err(|_| anyhow!("Invalid file URI: {}", uri.as_str()))?;
+                    let path = uri_to_path(&edit.text_document.uri)?;
                     let changes = edit.edits.iter().map(|e| match e {
                         lsp_types::OneOf::Left(te) => te.clone(),
                         lsp_types::OneOf::Right(ae) => annotated_text_edit_to_text_edit(ae),
@@ -2591,12 +2586,7 @@ async fn apply_workspace_edit(edit: &WorkspaceEdit, encoding: PositionEncodingKi
                 );
                 for op in ops {
                     if let lsp_types::DocumentChangeOperation::Edit(edit) = op {
-                        let uri = &edit.text_document.uri;
-                        let url = url::Url::parse(uri.as_str())
-                            .map_err(|_| anyhow!("Invalid URI: {}", uri.as_str()))?;
-                        let path = url
-                            .to_file_path()
-                            .map_err(|_| anyhow!("Invalid file URI: {}", uri.as_str()))?;
+                        let path = uri_to_path(&edit.text_document.uri)?;
                         let changes = edit.edits.iter().map(|e| match e {
                             lsp_types::OneOf::Left(te) => te.clone(),
                             lsp_types::OneOf::Right(ae) => annotated_text_edit_to_text_edit(ae),
@@ -2729,6 +2719,13 @@ fn position_to_offset(
             ))
         }
     }
+}
+
+fn uri_to_path(uri: &lsp_types::Uri) -> Result<PathBuf> {
+    let url =
+        url::Url::parse(uri.as_str()).map_err(|_| anyhow!("Invalid URI: {}", uri.as_str()))?;
+    url.to_file_path()
+        .map_err(|_| anyhow!("URI is not a file path: {}", uri.as_str()))
 }
 
 #[cfg(test)]

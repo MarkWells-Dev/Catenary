@@ -185,8 +185,9 @@ pub enum DocumentNotification {
 }
 
 fn path_to_uri(path: &Path) -> Result<Uri> {
-    let uri_str = format!("file://{}", path.display());
-    uri_str
+    let url = url::Url::from_file_path(path)
+        .map_err(|_| anyhow!("Failed to convert path to URL: {}", path.display()))?;
+    url.as_str()
         .parse()
         .map_err(|e| anyhow!("Invalid path for URI: {}: {}", path.display(), e))
 }

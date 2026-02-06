@@ -411,7 +411,10 @@ impl LspClient {
 
     /// Performs the LSP initialize handshake.
     pub async fn initialize(&mut self, root: &Path) -> Result<InitializeResult> {
-        let root_uri: Uri = format!("file://{}", root.display())
+        let root_url = url::Url::from_file_path(root)
+            .map_err(|_| anyhow!("Failed to convert root path to URL: {}", root.display()))?;
+        let root_uri: Uri = root_url
+            .as_str()
             .parse()
             .map_err(|e| anyhow!("Invalid root path {:?}: {}", root, e))?;
 
@@ -426,6 +429,9 @@ impl LspClient {
                     ..Default::default()
                 }),
                 text_document: Some(lsp_types::TextDocumentClientCapabilities {
+                    publish_diagnostics: Some(lsp_types::PublishDiagnosticsClientCapabilities {
+                        ..Default::default()
+                    }),
                     code_action: Some(lsp_types::CodeActionClientCapabilities {
                         code_action_literal_support: Some(lsp_types::CodeActionLiteralSupport {
                             code_action_kind: lsp_types::CodeActionKindLiteralSupport {
