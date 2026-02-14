@@ -56,7 +56,7 @@ Direct Tools:
 - NotebookEdit, Skill, ToolSearch
 
 Deferred Tools (via ToolSearch):
-- Catenary LSP Tools (lsp_definition, catenary_find_references, lsp_hover, etc.)
+- Catenary LSP Tools (definition, find_references, hover, etc.)
 
 Sub-Agent Tools:
 - Bash, Read/Write/Edit, Glob/Grep (via Task delegation)
@@ -103,7 +103,7 @@ The main.rs file doesn't exist... The directory appears to be empty.
 ● I notice that the standard file reading tools don't appear to be available in this environment. Let me try using
   the LSP document symbols tool to show you the structure of main.rs:
 
-● plugin:catenary:catenary - lsp_document_symbols (MCP)(file: "main.rs")
+● plugin:catenary:catenary - document_symbols (MCP)(file: "main.rs")
   ⎿  main [Function] /tmp/catenary-experiment/main.rs:1:1
      add [Function] /tmp/catenary-experiment/main.rs:5:1
      tests [Module] /tmp/catenary-experiment/main.rs:9:1
@@ -124,7 +124,7 @@ The main.rs file doesn't exist... The directory appears to be empty.
 **Behavior:**
 1. Tried Skill(read) - failed
 2. No Read/Bash/Task available - all blocked
-3. Adapted to catenary `lsp_document_symbols`
+3. Adapted to catenary `document_symbols`
 4. Admitted limitations gracefully
 5. Offered LSP-based alternatives
 

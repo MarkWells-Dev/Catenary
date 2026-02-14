@@ -211,12 +211,12 @@ Record observations here:
 ### Current catenary-mcp tools (LSP-focused)
 
 ```
-lsp_hover, lsp_definition, lsp_type_definition, lsp_implementation,
-catenary_find_references, lsp_document_symbols, catenary_find_symbol,
-lsp_code_actions, lsp_rename, lsp_completion, lsp_diagnostics,
-lsp_signature_help, lsp_formatting, lsp_range_formatting,
-lsp_call_hierarchy, lsp_type_hierarchy, catenary_status,
-catenary_apply_quickfix, catenary_codebase_map
+hover, definition, type_definition, implementation,
+find_references, document_symbols, find_symbol,
+code_actions, rename, completion, diagnostics,
+signature_help, formatting, range_formatting,
+call_hierarchy, type_hierarchy, status,
+apply_quickfix, codebase_map
 ```
 
 ### Tools we need to add
@@ -227,8 +227,8 @@ catenary_apply_quickfix, catenary_codebase_map
 | `read_file` | `catenary_read_file` | ❌ TODO | File read |
 | `write_file` | `catenary_write_file` | ❌ TODO | File write + diagnostics |
 | `replace` | `catenary_edit_file` | ❌ TODO | Edit + diagnostics |
-| `grep_search` | `catenary_find_symbol` / `catenary_find_references` | ✓ Partial | LSP-backed search |
-| `glob` | `catenary_codebase_map` | ✓ Partial | File tree available |
+| `grep_search` | `find_symbol` / `find_references` | ✓ Partial | LSP-backed search |
+| `glob` | `codebase_map` | ✓ Partial | File tree available |
 | `read_many_files` | `catenary_read_files` | ❌ TODO | Batch read |
 | `run_shell_command` | ❌ Intentionally omitted | N/A | Core design choice |
 

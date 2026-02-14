@@ -64,12 +64,12 @@
 │ x  run_shell_command {"command":"cat main.rs"}                                                                   │
 │                                                                                                                  │
 │ Tool "run_shell_command" not found in registry. Tools must use the exact names that are registered. Did you mean │
-│ one of: "web_fetch", "save_memory", "lsp_hover"?                                                                 │
+│ one of: "web_fetch", "save_memory", "hover"?                                                                 │
 ╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
-✦ I will use catenary_codebase_map to explore the project structure and symbols, as read_file is currently
+✦ I will use codebase_map to explore the project structure and symbols, as read_file is currently
   unavailable in my toolset.
 ╭──────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮
-│ ✓  catenary_codebase_map (catenary MCP Server) {"path":"/tmp/catenary-experiment","include_symbols":true}        │
+│ ✓  codebase_map (catenary MCP Server) {"path":"/tmp/catenary-experiment","include_symbols":true}        │
 │                                                                                                                  │
 │ main.rs                                                                                                          │
 │   tests Module                                                                                                   │
@@ -77,7 +77,7 @@
 ╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
 ✦ I will retrieve the document symbols for main.rs to better understand its structure.
 ╭──────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮
-│ ✓  lsp_document_symbols (catenary MCP Server) {"file":"/tmp/catenary-experiment/main.rs"}                        │
+│ ✓  document_symbols (catenary MCP Server) {"file":"/tmp/catenary-experiment/main.rs"}                        │
 │                                                                                                                  │
 │ main [Function] /tmp/catenary-experiment/main.rs:1:1                                                             │
 │ add [Function] /tmp/catenary-experiment/main.rs:5:1                                                              │
@@ -103,7 +103,7 @@
 
 **Prompt:** `Find the definition of the add function in main.rs`
 
-**Expected:** Should use catenary's lsp_definition or catenary_find_symbol
+**Expected:** Should use catenary's definition or find_symbol
 
 **Actual Result:**
 
