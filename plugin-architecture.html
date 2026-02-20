@@ -35,7 +35,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-7fe40b13.js";
+            window.path_to_searchindex_js = "searchindex-1846ba62.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-b2339312.js"></script>
@@ -230,12 +230,13 @@ claude plugin install catenary@catenary
 file locking:
 <ul>
 <li><code>PreToolUse</code> (all tools): runs <code>catenary sync-roots</code> to pick up <code>/add-dir</code>
-workspace additions.</li>
+workspace additions and directory removals.</li>
 <li><code>PreToolUse</code> on <code>Edit|Write|NotebookEdit</code>: runs <code>catenary lock acquire</code> to
 serialize concurrent edits across agents.</li>
 <li><code>PostToolUse</code> on <code>Edit|Write|NotebookEdit</code>: runs <code>catenary notify</code> for
-post-edit LSP diagnostics, then <code>catenary lock release</code> to start the grace
-period.</li>
+post-edit LSP diagnostics, then <code>catenary lock track-read</code> to update the
+tracked mtime (preventing false stale-read warnings on self-edits), then
+<code>catenary lock release</code> to start the grace period.</li>
 <li><code>PostToolUse</code> on <code>Read</code>: runs <code>catenary lock track-read</code> for change
 detection.</li>
 <li><code>PostToolUseFailure</code> on <code>Edit|Write|NotebookEdit</code>: runs
@@ -258,6 +259,8 @@ contain hooks (Gemini CLI ignores hooks defined in the manifest).</li>
 <code>catenary lock acquire --format=gemini</code> to serialize concurrent edits.</li>
 <li><code>AfterTool</code> on <code>read_file|write_file|replace</code>: runs
 <code>catenary notify --format=gemini</code> for post-edit LSP diagnostics.</li>
+<li><code>AfterTool</code> on <code>write_file|replace</code>: runs
+<code>catenary lock track-read --format=gemini</code> to update the tracked mtime.</li>
 <li><code>AfterTool</code> on <code>write_file|replace</code>: runs
 <code>catenary lock release --format=gemini</code> for lock grace period.</li>
 <li><code>AfterTool</code> on <code>read_file</code>: runs
@@ -292,8 +295,12 @@ injection.</li>
 </ul>
 <h3 id="catenary-sync-roots"><a class="header" href="#catenary-sync-roots"><code>catenary sync-roots</code></a></h3>
 <p>Triggered before each tool use (Claude Code only). Scans the Claude Code
-transcript for <code>/add-dir</code> confirmations and sends newly discovered roots to the
-running Catenary session.</p>
+transcript for <code>/add-dir</code> additions and directory removals, then sends the full
+workspace root set to the running Catenary session. The server diffs against its
+current state, applying both additions and removals to LSP clients and the search
+index.</p>
+<p>State is persisted in <code>known_roots.json</code> (inside the session directory) to track
+the transcript byte offset and the full discovered root set across invocations.</p>
 <p><strong>Fields consumed from hook JSON:</strong></p>
 <div class="table-wrapper">
 <table>
