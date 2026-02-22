@@ -35,10 +35,10 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-5977e505.js";
+            window.path_to_searchindex_js = "searchindex-7e0df5cd.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="toc-b2339312.js"></script>
+        <script src="toc-9c5e5c2a.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -220,9 +220,10 @@ maintaining a CLI.</p>
 <p><strong>Recommended: Extension + Constrained Mode.</strong></p>
 <ol>
 <li>
-<p><strong>Install the Extension:</strong> The Catenary extension provides an
-<code>AfterTool</code> hook that runs <code>catenary notify</code> after every file edit. This
-ensures the model sees LSP diagnostics immediately.</p>
+<p><strong>Install the Extension:</strong> The Catenary extension provides
+<code>BeforeTool</code> / <code>AfterTool</code> hooks that run <code>catenary acquire</code> /
+<code>catenary release</code> around file operations. This ensures file locking
+and the model sees LSP diagnostics immediately.</p>
 <pre><code class="language-bash">gemini extensions install https://github.com/MarkWells-Dev/Catenary
 </code></pre>
 </li>
@@ -379,17 +380,39 @@ deny_message = "Use Catenary's list_directory tool instead."
 (user)</p>
 <p><strong>Recommended: Hook-based integration.</strong> Claude Code’s native <code>Read</code>, <code>Edit</code>,
 and <code>Write</code> tools handle file I/O with inline diffs and syntax highlighting.
-Catenary provides LSP diagnostics via a <code>PostToolUse</code> hook — diagnostics appear
-in the model’s context after every edit.</p>
+Catenary provides file locking and LSP diagnostics via <code>PreToolUse</code> /
+<code>PostToolUse</code> hooks — the lock is held through the full edit→diagnostics cycle.</p>
 <pre><code class="language-json">{
   "hooks": {
-    "PostToolUse": [
+    "PreToolUse": [
       {
-        "matcher": "Edit|Write|NotebookEdit",
+        "matcher": "Edit|Write|NotebookEdit|Read",
         "hooks": [
           {
             "type": "command",
-            "command": "catenary notify"
+            "command": "catenary acquire --format=claude"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write|NotebookEdit|Read",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "catenary release --format=claude"
+          }
+        ]
+      }
+    ],
+    "PostToolUseFailure": [
+      {
+        "matcher": "Edit|Write|NotebookEdit|Read",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "catenary release --grace 0"
           }
         ]
       }
@@ -402,10 +425,10 @@ in the model’s context after every edit.</p>
   }
 }
 </code></pre>
-<p>The <code>catenary notify</code> command reads the hook’s JSON from stdin, finds the
-running Catenary session for the workspace, and returns any LSP diagnostics
-for the changed file. It exits silently on any error so it never blocks
-Claude Code’s flow.</p>
+<p>The <code>catenary release</code> command reads the hook’s JSON from stdin, finds the
+running Catenary session for the workspace, returns any LSP diagnostics,
+records the file’s mtime, and releases the lock. It exits silently on any
+error so it never blocks Claude Code’s flow.</p>
 <p><strong>Alternative: Constrained mode.</strong> Keep Claude Code’s native <code>Read</code>, <code>Edit</code>,
 <code>Write</code>, and <code>Bash</code> tools but deny text-scanning commands to force LSP-first
 navigation. This deny list blocks grep, file listing, manual reads, text
@@ -517,7 +540,7 @@ path that would let the model fall back to text scanning. The model uses:</p>
 <ul>
 <li><strong>Catenary LSP tools</strong> for navigation (<code>search</code>, <code>hover</code>, <code>definition</code>, etc.)</li>
 <li><strong>Catenary <code>list_directory</code></strong> for directory browsing (replaces <code>ls</code>, <code>tree</code>, <code>find</code>)</li>
-<li><strong>Claude Code <code>Read</code>/<code>Edit</code>/<code>Write</code></strong> for file I/O (with <code>catenary notify</code> hook for diagnostics)</li>
+<li><strong>Claude Code <code>Read</code>/<code>Edit</code>/<code>Write</code></strong> for file I/O (with <code>catenary release</code> hook for diagnostics)</li>
 <li><strong>Claude Code <code>Bash</code></strong> for build, test, and git commands only</li>
 </ul>
 <h2 id="experiment-results"><a class="header" href="#experiment-results">Experiment Results</a></h2>
@@ -571,7 +594,7 @@ by giving explicit deny messages instead of silently removing tools.</p>
 </table>
 </div>
 <p>File I/O is handled by the host tool’s native file operations. Catenary
-provides post-edit diagnostics via the <code>catenary notify</code> hook.</p>
+provides post-edit diagnostics via the <code>catenary release</code> hook.</p>
 <h2 id="limitations"><a class="header" href="#limitations">Limitations</a></h2>
 <h3 id="lsp-dependency"><a class="header" href="#lsp-dependency">LSP Dependency</a></h3>
 <p>Some operations require LSP:</p>

@@ -35,10 +35,10 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-5977e505.js";
+            window.path_to_searchindex_js = "searchindex-7e0df5cd.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="toc-b2339312.js"></script>
+        <script src="toc-9c5e5c2a.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -201,7 +201,7 @@ every turn. The problem scales with session length, not window size.</p>
 the language server directly — <code>hover</code> returns 50 tokens instead of 2,000.
 Instead of grepping across 20 files to find a definition, <code>definition</code> returns
 the exact location in one query. Instead of re-reading a file after editing it
-to check for errors, the <code>catenary notify</code> hook returns diagnostics inline.</p>
+to check for errors, the <code>catenary release</code> hook returns diagnostics inline.</p>
 <p>Each LSP query is small and stateless. Nothing accumulates. The context stays
 lean across the entire session, regardless of how long the agent works.</p>
 <div class="table-wrapper">
@@ -239,7 +239,7 @@ lean across the entire session, regardless of how long the agent works.</p>
 <p>Catenary bridges <a href="https://modelcontextprotocol.io/">MCP</a> and
 <a href="https://microsoft.github.io/language-server-protocol/">LSP</a>. It manages
 multiple language servers, routes requests by file type, and provides automatic
-post-edit diagnostics via the <code>catenary notify</code> hook — all through a single MCP
+post-edit diagnostics via the <code>catenary release</code> hook — all through a single MCP
 server. The agent never needs to know which server handles which language.</p>
 <h2 id="constrained-mode"><a class="header" href="#constrained-mode">Constrained Mode</a></h2>
 <p>Catenary is designed to be the agent’s <strong>primary navigation toolkit</strong>, not a
@@ -247,7 +247,7 @@ supplement. In constrained mode, the host CLI’s text-scanning commands (grep,
 cat, find, ls, etc.) are denied via permissions, forcing the agent to use LSP
 queries for navigation. The host’s native file I/O tools remain available for
 reading and editing, with Catenary providing post-edit diagnostics via the
-<code>catenary notify</code> hook.</p>
+<code>catenary release</code> hook.</p>
 <p>See <a href="cli-integration.html">CLI Integration</a> for setup instructions.</p>
 <blockquote>
 <p>Catenary also works as a supplement alongside built-in tools. But without
@@ -308,7 +308,7 @@ grepping — and the efficiency gains are lost.</p>
 </div>
 <p>File reading and editing is handled by the host tool’s native file operations
 (e.g. Claude Code’s <code>Read</code>, <code>Edit</code>, <code>Write</code>). Catenary provides <strong>post-edit
-LSP diagnostics</strong> via the <code>catenary notify</code> hook — diagnostics appear in the
+LSP diagnostics</strong> via the <code>catenary release</code> hook — diagnostics appear in the
 model’s context after every edit. See <a href="cli-integration.html">CLI Integration</a>
 for hook configuration.</p>
 <p>All file paths are validated against workspace roots.</p>

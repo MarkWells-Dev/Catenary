@@ -36,10 +36,10 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-5977e505.js";
+            window.path_to_searchindex_js = "searchindex-7e0df5cd.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="toc-b2339312.js"></script>
+        <script src="toc-9c5e5c2a.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -237,7 +237,7 @@ every turn. The problem scales with session length, not window size.</p>
 the language server directly — <code>hover</code> returns 50 tokens instead of 2,000.
 Instead of grepping across 20 files to find a definition, <code>definition</code> returns
 the exact location in one query. Instead of re-reading a file after editing it
-to check for errors, the <code>catenary notify</code> hook returns diagnostics inline.</p>
+to check for errors, the <code>catenary release</code> hook returns diagnostics inline.</p>
 <p>Each LSP query is small and stateless. Nothing accumulates. The context stays
 lean across the entire session, regardless of how long the agent works.</p>
 <div class="table-wrapper">
@@ -275,7 +275,7 @@ lean across the entire session, regardless of how long the agent works.</p>
 <p>Catenary bridges <a href="https://modelcontextprotocol.io/">MCP</a> and
 <a href="https://microsoft.github.io/language-server-protocol/">LSP</a>. It manages
 multiple language servers, routes requests by file type, and provides automatic
-post-edit diagnostics via the <code>catenary notify</code> hook — all through a single MCP
+post-edit diagnostics via the <code>catenary release</code> hook — all through a single MCP
 server. The agent never needs to know which server handles which language.</p>
 <h2 id="constrained-mode"><a class="header" href="#constrained-mode">Constrained Mode</a></h2>
 <p>Catenary is designed to be the agent’s <strong>primary navigation toolkit</strong>, not a
@@ -283,7 +283,7 @@ supplement. In constrained mode, the host CLI’s text-scanning commands (grep,
 cat, find, ls, etc.) are denied via permissions, forcing the agent to use LSP
 queries for navigation. The host’s native file I/O tools remain available for
 reading and editing, with Catenary providing post-edit diagnostics via the
-<code>catenary notify</code> hook.</p>
+<code>catenary release</code> hook.</p>
 <p>See <a href="#cli-integration">CLI Integration</a> for setup instructions.</p>
 <blockquote>
 <p>Catenary also works as a supplement alongside built-in tools. But without
@@ -344,7 +344,7 @@ grepping — and the efficiency gains are lost.</p>
 </div>
 <p>File reading and editing is handled by the host tool’s native file operations
 (e.g. Claude Code’s <code>Read</code>, <code>Edit</code>, <code>Write</code>). Catenary provides <strong>post-edit
-LSP diagnostics</strong> via the <code>catenary notify</code> hook — diagnostics appear in the
+LSP diagnostics</strong> via the <code>catenary release</code> hook — diagnostics appear in the
 model’s context after every edit. See <a href="#cli-integration">CLI Integration</a>
 for hook configuration.</p>
 <p>All file paths are validated against workspace roots.</p>
@@ -640,9 +640,10 @@ maintaining a CLI.</p>
 <p><strong>Recommended: Extension + Constrained Mode.</strong></p>
 <ol>
 <li>
-<p><strong>Install the Extension:</strong> The Catenary extension provides an
-<code>AfterTool</code> hook that runs <code>catenary notify</code> after every file edit. This
-ensures the model sees LSP diagnostics immediately.</p>
+<p><strong>Install the Extension:</strong> The Catenary extension provides
+<code>BeforeTool</code> / <code>AfterTool</code> hooks that run <code>catenary acquire</code> /
+<code>catenary release</code> around file operations. This ensures file locking
+and the model sees LSP diagnostics immediately.</p>
 <pre><code class="language-bash">gemini extensions install https://github.com/MarkWells-Dev/Catenary
 </code></pre>
 </li>
@@ -799,17 +800,39 @@ deny_message = "Use Catenary's list_directory tool instead."
 (user)</p>
 <p><strong>Recommended: Hook-based integration.</strong> Claude Code’s native <code>Read</code>, <code>Edit</code>,
 and <code>Write</code> tools handle file I/O with inline diffs and syntax highlighting.
-Catenary provides LSP diagnostics via a <code>PostToolUse</code> hook — diagnostics appear
-in the model’s context after every edit.</p>
+Catenary provides file locking and LSP diagnostics via <code>PreToolUse</code> /
+<code>PostToolUse</code> hooks — the lock is held through the full edit→diagnostics cycle.</p>
 <pre><code class="language-json">{
   "hooks": {
-    "PostToolUse": [
+    "PreToolUse": [
       {
-        "matcher": "Edit|Write|NotebookEdit",
+        "matcher": "Edit|Write|NotebookEdit|Read",
         "hooks": [
           {
             "type": "command",
-            "command": "catenary notify"
+            "command": "catenary acquire --format=claude"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write|NotebookEdit|Read",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "catenary release --format=claude"
+          }
+        ]
+      }
+    ],
+    "PostToolUseFailure": [
+      {
+        "matcher": "Edit|Write|NotebookEdit|Read",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "catenary release --grace 0"
           }
         ]
       }
@@ -822,10 +845,10 @@ in the model’s context after every edit.</p>
   }
 }
 </code></pre>
-<p>The <code>catenary notify</code> command reads the hook’s JSON from stdin, finds the
-running Catenary session for the workspace, and returns any LSP diagnostics
-for the changed file. It exits silently on any error so it never blocks
-Claude Code’s flow.</p>
+<p>The <code>catenary release</code> command reads the hook’s JSON from stdin, finds the
+running Catenary session for the workspace, returns any LSP diagnostics,
+records the file’s mtime, and releases the lock. It exits silently on any
+error so it never blocks Claude Code’s flow.</p>
 <p><strong>Alternative: Constrained mode.</strong> Keep Claude Code’s native <code>Read</code>, <code>Edit</code>,
 <code>Write</code>, and <code>Bash</code> tools but deny text-scanning commands to force LSP-first
 navigation. This deny list blocks grep, file listing, manual reads, text
@@ -937,7 +960,7 @@ path that would let the model fall back to text scanning. The model uses:</p>
 <ul>
 <li><strong>Catenary LSP tools</strong> for navigation (<code>search</code>, <code>hover</code>, <code>definition</code>, etc.)</li>
 <li><strong>Catenary <code>list_directory</code></strong> for directory browsing (replaces <code>ls</code>, <code>tree</code>, <code>find</code>)</li>
-<li><strong>Claude Code <code>Read</code>/<code>Edit</code>/<code>Write</code></strong> for file I/O (with <code>catenary notify</code> hook for diagnostics)</li>
+<li><strong>Claude Code <code>Read</code>/<code>Edit</code>/<code>Write</code></strong> for file I/O (with <code>catenary release</code> hook for diagnostics)</li>
 <li><strong>Claude Code <code>Bash</code></strong> for build, test, and git commands only</li>
 </ul>
 <h2 id="experiment-results"><a class="header" href="#experiment-results">Experiment Results</a></h2>
@@ -991,7 +1014,7 @@ by giving explicit deny messages instead of silently removing tools.</p>
 </table>
 </div>
 <p>File I/O is handled by the host tool’s native file operations. Catenary
-provides post-edit diagnostics via the <code>catenary notify</code> hook.</p>
+provides post-edit diagnostics via the <code>catenary release</code> hook.</p>
 <h2 id="limitations"><a class="header" href="#limitations">Limitations</a></h2>
 <h3 id="lsp-dependency"><a class="header" href="#lsp-dependency">LSP Dependency</a></h3>
 <p>Some operations require LSP:</p>
@@ -1100,17 +1123,32 @@ that URI — advancing the counter past the snapshot — before reading the cach
 and returning results. Because the snapshot is taken before the change is sent,
 there is no race window: any publication that arrives after the snapshot
 necessarily reflects the change or something newer.</p>
-<p>After the counter advances, Catenary continues to observe the server’s
-notification stream and progress state. A polling loop checks every 100 ms
-for new notifications or active progress tokens (e.g., flycheck running
-<code>cargo check</code>). If the server sends any further notifications or has
-background work in progress, the quiet timer resets. Only when the server
-has been completely silent for 2 seconds with no active progress tokens does
-Catenary read the cache and return. This catches servers like rust-analyzer
-that publish diagnostics in multiple rounds — fast warnings from native
-analysis followed by slower type-checking errors from flycheck.</p>
+<p>The wait is split into two phases. Phase 1 uses a strategy selected per-server
+based on runtime observations:</p>
+<ul>
+<li><strong>Version</strong> — the server includes a <code>version</code> field in <code>publishDiagnostics</code>.
+Catenary waits for the generation counter to advance past the snapshot. This
+is the strongest signal but has not been observed from any server in practice.</li>
+<li><strong><code>TokenMonitor</code></strong> — the server sends <code>$/progress</code> tokens (e.g.,
+rust-analyzer’s flycheck). Catenary waits for the server to cycle from Active
+to Idle, indicating analysis is complete. A hard timeout prevents infinite
+hangs if the server never starts work for a given change.</li>
+<li><strong><code>ProcessMonitor</code></strong> — the server sends neither version nor progress tokens.
+Catenary polls the server process’s CPU time via <code>/proc/&lt;pid&gt;/stat</code> (Linux)
+or <code>ps</code> (macOS) to infer activity. Trust-based patience decays on consecutive
+timeouts without diagnostics arriving (120s → 60s → 30s → 5s), preventing
+long waits on servers that consistently don’t produce diagnostics for certain
+change patterns.</li>
+</ul>
+<p>Phase 2 is a 2-second activity settle, shared by all strategies. After Phase 1
+signals completion, Catenary continues observing the server’s notification
+stream and progress state. Only when the server has been completely silent for
+2 seconds with no active progress tokens does Catenary read the cache and
+return. This catches servers like rust-analyzer that publish diagnostics in
+multiple rounds — fast warnings from native analysis followed by slower
+type-checking errors from flycheck.</p>
 <p>This mechanism applies to the paths that return diagnostics after a change:
-the <code>catenary notify</code> hook (for post-edit diagnostics) and the <code>diagnostics</code>
+the <code>catenary release</code> hook (for post-edit diagnostics) and the <code>diagnostics</code>
 tool. Request/response tools like <code>hover</code> and <code>document_symbols</code> do not need
 it — their results come directly from the server response, not from the cache.</p>
 <h2 id="root-synchronization"><a class="header" href="#root-synchronization">Root Synchronization</a></h2>
@@ -1189,16 +1227,13 @@ file locking:
 <ul>
 <li><code>PreToolUse</code> (all tools): runs <code>catenary sync-roots</code> to pick up <code>/add-dir</code>
 workspace additions and directory removals.</li>
-<li><code>PreToolUse</code> on <code>Edit|Write|NotebookEdit</code>: runs <code>catenary lock acquire</code> to
-serialize concurrent edits across agents.</li>
-<li><code>PostToolUse</code> on <code>Edit|Write|NotebookEdit</code>: runs <code>catenary notify</code> for
-post-edit LSP diagnostics, then <code>catenary lock track-read</code> to update the
-tracked mtime (preventing false stale-read warnings on self-edits), then
-<code>catenary lock release</code> to start the grace period.</li>
-<li><code>PostToolUse</code> on <code>Read</code>: runs <code>catenary lock track-read</code> for change
-detection.</li>
-<li><code>PostToolUseFailure</code> on <code>Edit|Write|NotebookEdit</code>: runs
-<code>catenary lock release --grace 0</code> for immediate lock release on failure.</li>
+<li><code>PreToolUse</code> on <code>Edit|Write|NotebookEdit|Read</code>: runs <code>catenary acquire</code> to
+serialize concurrent file access across agents.</li>
+<li><code>PostToolUse</code> on <code>Edit|Write|NotebookEdit|Read</code>: runs <code>catenary release</code>
+which handles the full post-tool pipeline — diagnostics notify, mtime
+tracking, then lock release with grace period.</li>
+<li><code>PostToolUseFailure</code> on <code>Edit|Write|NotebookEdit|Read</code>: runs
+<code>catenary release --grace 0</code> for immediate lock release on failure.</li>
 </ul>
 </li>
 <li><strong><code>config.example.toml</code></strong> — example Catenary configuration.</li>
@@ -1213,68 +1248,23 @@ detection.</li>
 contain hooks (Gemini CLI ignores hooks defined in the manifest).</li>
 <li><strong><code>hooks/hooks.json</code></strong> — registers hooks for diagnostics and file locking:
 <ul>
-<li><code>BeforeTool</code> on <code>write_file|replace</code>: runs
-<code>catenary lock acquire --format=gemini</code> to serialize concurrent edits.</li>
+<li><code>BeforeTool</code> on <code>read_file|write_file|replace</code>: runs
+<code>catenary acquire --format=gemini</code> to serialize concurrent file access.</li>
 <li><code>AfterTool</code> on <code>read_file|write_file|replace</code>: runs
-<code>catenary notify --format=gemini</code> for post-edit LSP diagnostics.</li>
-<li><code>AfterTool</code> on <code>write_file|replace</code>: runs
-<code>catenary lock track-read --format=gemini</code> to update the tracked mtime.</li>
-<li><code>AfterTool</code> on <code>write_file|replace</code>: runs
-<code>catenary lock release --format=gemini</code> for lock grace period.</li>
-<li><code>AfterTool</code> on <code>read_file</code>: runs
-<code>catenary lock track-read --format=gemini</code> for change detection.</li>
+<code>catenary release --format=gemini</code> which handles the full post-tool
+pipeline — diagnostics notify, mtime tracking, then lock release.</li>
 </ul>
 </li>
 </ul>
 <h2 id="hook-contracts"><a class="header" href="#hook-contracts">Hook Contracts</a></h2>
-<p>All hook commands (<code>catenary notify</code>, <code>catenary sync-roots</code>, <code>catenary lock</code>)
+<p>All hook commands (<code>catenary acquire</code>, <code>catenary release</code>, <code>catenary sync-roots</code>)
 read hook JSON from stdin. They silently succeed on any error to avoid breaking
 the host CLI’s flow.</p>
-<h3 id="catenary-notify"><a class="header" href="#catenary-notify"><code>catenary notify</code></a></h3>
-<p>Triggered after file edits. Reads the hook JSON, extracts the file path, finds
-the matching Catenary session, and returns LSP diagnostics to stdout.</p>
-<p><strong>Fields consumed from hook JSON:</strong></p>
-<div class="table-wrapper">
-<table>
-<thead>
-<tr><th>Field</th><th>Used for</th></tr>
-</thead>
-<tbody>
-<tr><td><code>tool_input.file_path</code> or <code>tool_input.file</code></td><td>File that was edited</td></tr>
-<tr><td><code>cwd</code></td><td>Resolving relative file paths (fallback: process CWD)</td></tr>
-</tbody>
-</table>
-</div>
-<p><strong>Output format</strong> depends on the <code>--format</code> flag:</p>
-<ul>
-<li>Default (Claude Code): plain text, one diagnostic per line.</li>
-<li><code>--format=gemini</code>: wrapped in <code>&lt;hook_context&gt;</code> tags for Gemini’s context
-injection.</li>
-</ul>
-<h3 id="catenary-sync-roots"><a class="header" href="#catenary-sync-roots"><code>catenary sync-roots</code></a></h3>
-<p>Triggered before each tool use (Claude Code only). Scans the Claude Code
-transcript for <code>/add-dir</code> additions and directory removals, then sends the full
-workspace root set to the running Catenary session. The server diffs against its
-current state, applying both additions and removals to LSP clients and the search
-index.</p>
-<p>State is persisted in <code>known_roots.json</code> (inside the session directory) to track
-the transcript byte offset and the full discovered root set across invocations.</p>
-<p><strong>Fields consumed from hook JSON:</strong></p>
-<div class="table-wrapper">
-<table>
-<thead>
-<tr><th>Field</th><th>Used for</th></tr>
-</thead>
-<tbody>
-<tr><td><code>transcript_path</code></td><td>Path to the Claude Code transcript file</td></tr>
-<tr><td><code>cwd</code></td><td>Identifying which Catenary session to update</td></tr>
-</tbody>
-</table>
-</div>
-<h3 id="catenary-lock-acquire"><a class="header" href="#catenary-lock-acquire"><code>catenary lock acquire</code></a></h3>
-<p>Triggered before file edits (Claude Code <code>PreToolUse</code>, Gemini <code>BeforeTool</code>). Acquires a file-level
-advisory lock, blocking until the lock is available or the timeout expires. This
-serializes concurrent edits to the same file across multiple agents.</p>
+<h3 id="catenary-acquire"><a class="header" href="#catenary-acquire"><code>catenary acquire</code></a></h3>
+<p>Triggered before file reads or edits (Claude Code <code>PreToolUse</code>, Gemini
+<code>BeforeTool</code>). Acquires a file-level advisory lock, blocking until the lock is
+available or the timeout expires. This serializes concurrent access to the same
+file across multiple agents.</p>
 <p><strong>Fields consumed from hook JSON:</strong></p>
 <div class="table-wrapper">
 <table>
@@ -1293,21 +1283,30 @@ serializes concurrent edits to the same file across multiple agents.</p>
 <div class="table-wrapper">
 <table>
 <thead>
-<tr><th>Flag</th><th>Default</th><th>Description</th></tr>
+<tr><th>Flag</th><th>Required</th><th>Description</th></tr>
 </thead>
 <tbody>
-<tr><td><code>--timeout</code></td><td>180</td><td>Seconds to wait before giving up</td></tr>
-<tr><td><code>--format</code></td><td>plain</td><td>Output format (<code>plain</code> or <code>gemini</code>)</td></tr>
+<tr><td><code>--timeout</code></td><td>no (default 180)</td><td>Seconds to wait before giving up</td></tr>
+<tr><td><code>--format</code></td><td>yes</td><td>Output format (<code>claude</code> or <code>gemini</code>)</td></tr>
 </tbody>
 </table>
 </div>
 <p><strong>Output:</strong> silent on success. On timeout, returns JSON with
 <code>permissionDecision: "deny"</code>. If the file was modified since the owner’s last
 read, returns JSON with <code>additionalContext</code> warning.</p>
-<h3 id="catenary-lock-release"><a class="header" href="#catenary-lock-release"><code>catenary lock release</code></a></h3>
-<p>Triggered after file edits (Claude Code <code>PostToolUse</code>, Gemini <code>AfterTool</code>).
-Releases the lock with a grace period, allowing the same agent to re-acquire
-without contention during the diagnostics→fix cycle.</p>
+<h3 id="catenary-release"><a class="header" href="#catenary-release"><code>catenary release</code></a></h3>
+<p>Triggered after file reads or edits (Claude Code <code>PostToolUse</code>, Gemini
+<code>AfterTool</code>). Runs the full post-tool pipeline:</p>
+<ol>
+<li><strong>Diagnostics notify</strong> — connects to the session’s notify socket and returns
+LSP diagnostics to stdout (when <code>--format</code> is provided).</li>
+<li><strong>Track read</strong> — records the file’s mtime so future <code>acquire</code> calls can
+detect external modifications (when <code>--format</code> is provided).</li>
+<li><strong>Lock release</strong> — releases the lock with a grace period, allowing the same
+agent to re-acquire without contention during diagnostics→fix cycles.</li>
+</ol>
+<p>When <code>--format</code> is omitted (failure path, e.g. <code>--grace 0</code>), skips diagnostics
+and track-read, just releasing the lock immediately.</p>
 <p><strong>Fields consumed from hook JSON:</strong></p>
 <div class="table-wrapper">
 <table>
@@ -1318,7 +1317,7 @@ without contention during the diagnostics→fix cycle.</p>
 <tr><td><code>session_id</code></td><td>Lock owner identity</td></tr>
 <tr><td><code>agent_id</code></td><td>Lock owner identity (appended if present)</td></tr>
 <tr><td><code>tool_input.file_path</code> or <code>tool_input.file</code></td><td>File to unlock</td></tr>
-<tr><td><code>cwd</code></td><td>Finding the session for monitor events</td></tr>
+<tr><td><code>cwd</code></td><td>Resolving relative file paths and finding the session for diagnostics/monitor events</td></tr>
 </tbody>
 </table>
 </div>
@@ -1326,18 +1325,22 @@ without contention during the diagnostics→fix cycle.</p>
 <div class="table-wrapper">
 <table>
 <thead>
-<tr><th>Flag</th><th>Default</th><th>Description</th></tr>
+<tr><th>Flag</th><th>Required</th><th>Description</th></tr>
 </thead>
 <tbody>
-<tr><td><code>--grace</code></td><td>30</td><td>Seconds before the lock expires</td></tr>
-<tr><td><code>--format</code></td><td>plain</td><td>Output format (<code>plain</code> or <code>gemini</code>)</td></tr>
+<tr><td><code>--grace</code></td><td>no (default 30)</td><td>Seconds before the lock expires</td></tr>
+<tr><td><code>--format</code></td><td>no</td><td>Output format (<code>claude</code> or <code>gemini</code>). When set, runs diagnostics and track-read before releasing</td></tr>
 </tbody>
 </table>
 </div>
-<h3 id="catenary-lock-track-read"><a class="header" href="#catenary-lock-track-read"><code>catenary lock track-read</code></a></h3>
-<p>Triggered after file reads (Claude Code <code>PostToolUse</code> on <code>Read</code>, Gemini
-<code>AfterTool</code> on <code>read_file</code>). Records the file’s modification time so future
-lock acquisitions can detect if the file changed since the agent last read it.</p>
+<h3 id="catenary-sync-roots"><a class="header" href="#catenary-sync-roots"><code>catenary sync-roots</code></a></h3>
+<p>Triggered before each tool use (Claude Code only). Scans the Claude Code
+transcript for <code>/add-dir</code> additions and directory removals, then sends the full
+workspace root set to the running Catenary session. The server diffs against its
+current state, applying both additions and removals to LSP clients and the search
+index.</p>
+<p>State is persisted in <code>known_roots.json</code> (inside the session directory) to track
+the transcript byte offset and the full discovered root set across invocations.</p>
 <p><strong>Fields consumed from hook JSON:</strong></p>
 <div class="table-wrapper">
 <table>
@@ -1345,9 +1348,8 @@ lock acquisitions can detect if the file changed since the agent last read it.</
 <tr><th>Field</th><th>Used for</th></tr>
 </thead>
 <tbody>
-<tr><td><code>session_id</code></td><td>Owner identity for tracking</td></tr>
-<tr><td><code>agent_id</code></td><td>Owner identity (appended if present)</td></tr>
-<tr><td><code>tool_input.file_path</code> or <code>tool_input.file</code></td><td>File to track</td></tr>
+<tr><td><code>transcript_path</code></td><td>Path to the Claude Code transcript file</td></tr>
+<tr><td><code>cwd</code></td><td>Identifying which Catenary session to update</td></tr>
 </tbody>
 </table>
 </div>
@@ -1500,7 +1502,7 @@ language server directly.</p>
 <h2 id="when-to-use-lsp-vs-native-file-tools"><a class="header" href="#when-to-use-lsp-vs-native-file-tools">When to Use LSP vs Native File Tools</a></h2>
 <p>Catenary provides LSP tools and <code>list_directory</code>. File reading and editing is
 handled by the host tool’s native file operations (e.g. Claude Code’s <code>Read</code>,
-<code>Edit</code>, <code>Write</code>). The <code>catenary notify</code> hook provides post-edit LSP diagnostics
+<code>Edit</code>, <code>Write</code>). The <code>catenary release</code> hook provides post-edit LSP diagnostics
 so you immediately see any errors introduced by changes.</p>
 <p><strong>Use LSP tools</strong> for:</p>
 <ul>
@@ -1589,23 +1591,48 @@ not text matches. No false positives from comments or strings.</p>
 <em>how</em> something works, not <em>what</em> it is or <em>where</em> it lives.</p>
 </li>
 <li>
-<p><strong>Edit with feedback.</strong> The <code>catenary notify</code> hook returns LSP diagnostics
+<p><strong>Edit with feedback.</strong> The <code>catenary release</code> hook returns LSP diagnostics
 after every edit, so you immediately see any errors introduced.</p>
 </li>
 </ol>
-<h2 id="notify-hook"><a class="header" href="#notify-hook">Notify Hook</a></h2>
-<p>Catenary provides post-edit LSP diagnostics via the <code>catenary notify</code> command,
-designed for use as a <code>PostToolUse</code> hook in Claude Code.</p>
-<p>Add to <code>.claude/settings.json</code>:</p>
+<h2 id="release-hook"><a class="header" href="#release-hook">Release Hook</a></h2>
+<p>Catenary provides post-edit LSP diagnostics, mtime tracking, and lock release
+via the <code>catenary release</code> command, designed for use as a <code>PostToolUse</code> hook
+in Claude Code.</p>
+<p>The recommended setup uses the Catenary plugin (<code>catenary@catenary</code>), which
+registers <code>catenary acquire</code> / <code>catenary release</code> hooks automatically. For
+manual configuration, add to <code>.claude/settings.json</code>:</p>
 <pre><code class="language-json">{
   "hooks": {
-    "PostToolUse": [
+    "PreToolUse": [
       {
-        "matcher": "Edit|Write|NotebookEdit",
+        "matcher": "Edit|Write|NotebookEdit|Read",
         "hooks": [
           {
             "type": "command",
-            "command": "catenary notify"
+            "command": "catenary acquire --format=claude"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write|NotebookEdit|Read",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "catenary release --format=claude"
+          }
+        ]
+      }
+    ],
+    "PostToolUseFailure": [
+      {
+        "matcher": "Edit|Write|NotebookEdit|Read",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "catenary release --grace 0"
           }
         ]
       }
@@ -1613,9 +1640,9 @@ designed for use as a <code>PostToolUse</code> hook in Claude Code.</p>
   }
 }
 </code></pre>
-<p>The hook reads the <code>PostToolUse</code> JSON from stdin, finds the running Catenary
-session for the workspace, notifies the LSP servers of the file change, and
-prints any diagnostics to stdout. It exits silently on any error so it never
+<p>The <code>release</code> hook reads the <code>PostToolUse</code> JSON from stdin, finds the running
+Catenary session for the workspace, runs LSP diagnostics, records the file’s
+mtime, and releases the file lock. It exits silently on any error so it never
 blocks the host tool’s flow.</p>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="lsp-fault-model"><a class="header" href="#lsp-fault-model">LSP Fault Model</a></h1>
@@ -1731,8 +1758,13 @@ blocks the host tool’s flow.</p>
 <h3 id="error-attribution-resolved"><a class="header" href="#error-attribution-resolved"><del>Error Attribution</del> (Resolved)</a></h3>
 <p>All LSP-originated errors are now prefixed with <code>[language]</code>, e.g., <code>[rust] request timed out</code> or <code>[python] server closed connection</code>. The <code>LspClient</code> stores its language identifier and includes it in all error messages from the <code>request()</code> method. Handler-level errors (e.g., “server is no longer running”) also include the language prefix.</p>
 <h3 id="timeout-ambiguity-resolved"><a class="header" href="#timeout-ambiguity-resolved"><del>Timeout Ambiguity</del> (Resolved)</a></h3>
-<p><code>wait_for_diagnostics_update</code> now returns a three-variant enum (<code>DiagnosticsWaitResult</code>) instead of a boolean, distinguishing <code>Updated</code>, <code>Inactive</code> (server alive but silent), and <code>ServerDied</code>. Phase 1 tracks server activity (notification counter + progress tokens) and waits indefinitely while the server shows signs of life. When the server goes completely silent for <code>DIAGNOSTICS_TIMEOUT</code> (30s) but is still alive, it returns <code>Inactive</code> rather than aborting.</p>
-<p>Callers (<code>handle_diagnostics</code> in <code>handler.rs</code>, <code>process_file_inner</code> in <code>notify.rs</code>) implement a nudge-and-retry loop: on <code>Inactive</code>, they re-send <code>didSave</code> to wake the server and retry up to 3 times. This handles CPU-starved servers under concurrent load that may miss or deprioritize the initial notification. On <code>ServerDied</code>, callers report the error. After all retries exhaust, callers proceed with cached diagnostics (graceful degradation) rather than returning an error.</p>
+<p><code>wait_for_diagnostics_update</code> returns a two-variant enum (<code>DiagnosticsWaitResult</code>): <code>Updated</code> or <code>ServerDied</code>. Each LSP server is assigned a <code>DiagnosticsStrategy</code> based on runtime observations:</p>
+<ul>
+<li><strong>Version</strong> — server includes <code>version</code> in <code>publishDiagnostics</code>. Wait for generation advance.</li>
+<li><strong><code>TokenMonitor</code></strong> — server sends <code>$/progress</code> tokens. Wait for Active -&gt; Idle cycle with a hard timeout.</li>
+<li><strong><code>ProcessMonitor</code></strong> — no progress tokens, no version. Poll CPU time via <code>/proc/&lt;pid&gt;/stat</code> (Linux) or <code>ps</code> (macOS). Trust-based patience decays on consecutive timeouts without diagnostics.</li>
+</ul>
+<p>All strategies include a Phase 2 settle: 2 seconds of silence with no active progress tokens, catching servers that publish diagnostics in multiple rounds. Callers send <code>didSave</code> unconditionally after every change (handling servers that only run diagnostics on save) and make a single <code>wait_for_diagnostics_update</code> call — no retry loop.</p>
 <h3 id="uri-trust"><a class="header" href="#uri-trust">URI Trust</a></h3>
 <p><strong>Location:</strong> Multiple points in <code>src/bridge/handler.rs</code> — <code>format_definition_response</code>, <code>find_symbol_in_workspace_response</code>, <code>format_locations_with_definition</code>, etc.</p>
 <p><code>uri.path()</code> is extracted from LSP responses and converted to <code>PathBuf</code> without validation. A buggy server could return URIs like <code>file:///etc/passwd</code> or <code>file:///workspace/../../../etc/shadow</code>.</p>
@@ -2267,6 +2299,256 @@ client_manager.add_root(PathBuf::from("/etc"))
 </tbody>
 </table>
 </div>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="smoke-testing"><a class="header" href="#smoke-testing">Smoke Testing</a></h1>
+<p>Manual verification procedures for features that depend on external state
+(installed plugins, extension directories, PATH configuration) and cannot
+be covered by unit or integration tests.</p>
+<h2 id="catenary-doctor--hook-health-checks"><a class="header" href="#catenary-doctor--hook-health-checks"><code>catenary doctor</code> — Hook Health Checks</a></h2>
+<p>The hooks section of <code>catenary doctor</code> compares installed hook files against
+the hooks embedded in the binary at compile time. It also verifies PATH
+consistency.</p>
+<h3 id="setup"><a class="header" href="#setup">Setup</a></h3>
+<p>Build and install the current binary:</p>
+<pre><code class="language-bash">cargo install --path .
+</code></pre>
+<h3 id="claude-code-plugin-1"><a class="header" href="#claude-code-plugin-1">Claude Code Plugin</a></h3>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Scenario</th><th>Steps</th><th>Expected</th></tr>
+</thead>
+<tbody>
+<tr><td>Plugin installed</td><td>Install via <code>/plugin install catenary@catenary</code></td><td>Version, source type (directory/github), <code>✓ hooks match</code></td></tr>
+<tr><td>Plugin not installed</td><td>Remove via <code>/plugin remove catenary@catenary</code></td><td><code>- not installed</code></td></tr>
+<tr><td>Stale hooks</td><td>Edit <code>~/.claude/plugins/cache/catenary/catenary/&lt;ver&gt;/hooks/hooks.json</code></td><td><code>✗ stale hooks (reinstall: ...)</code></td></tr>
+<tr><td>Missing hooks file</td><td>Delete the cached <code>hooks/hooks.json</code></td><td><code>✗ hooks.json not found in plugin cache</code></td></tr>
+</tbody>
+</table>
+</div>
+<h3 id="gemini-cli-extension-1"><a class="header" href="#gemini-cli-extension-1">Gemini CLI Extension</a></h3>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Scenario</th><th>Steps</th><th>Expected</th></tr>
+</thead>
+<tbody>
+<tr><td>Extension installed</td><td><code>gemini extensions install https://github.com/MarkWells-Dev/Catenary</code></td><td>Version, <code>(installed)</code>, <code>✓ hooks match</code></td></tr>
+<tr><td>Extension linked</td><td><code>gemini extensions link /path/to/Catenary</code></td><td>Version, <code>(linked)</code>, <code>✓ hooks match</code></td></tr>
+<tr><td>Extension not installed</td><td><code>gemini extensions uninstall Catenary</code></td><td><code>- not installed</code></td></tr>
+<tr><td>Stale hooks (installed)</td><td>Edit <code>~/.gemini/extensions/Catenary/hooks/hooks.json</code></td><td><code>✗ stale hooks (update extension)</code></td></tr>
+</tbody>
+</table>
+</div>
+<h3 id="path-consistency"><a class="header" href="#path-consistency">PATH Consistency</a></h3>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Scenario</th><th>Steps</th><th>Expected</th></tr>
+</thead>
+<tbody>
+<tr><td>PATH matches</td><td><code>catenary doctor</code> from normal shell</td><td><code>✓ /path/to/catenary</code></td></tr>
+<tr><td>PATH differs</td><td>Install a second copy elsewhere, prepend to PATH</td><td><code>✗ /other/path differs from /original/path</code></td></tr>
+<tr><td>Not on PATH</td><td>Remove catenary from all PATH directories</td><td><code>✗ catenary not found on PATH</code></td></tr>
+</tbody>
+</table>
+</div>
+<h3 id="version-header"><a class="header" href="#version-header">Version Header</a></h3>
+<p><code>catenary doctor</code> prints the version from <code>git describe</code> at the top of
+output. Verify it matches the expected format:</p>
+<ul>
+<li>Tagged commit: <code>Catenary 1.3.6</code></li>
+<li>Post-tag: <code>Catenary 1.3.6-3-gabc1234</code></li>
+<li>Dirty tree: <code>Catenary 1.3.6-3-gabc1234-dirty</code></li>
+</ul>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="mockls"><a class="header" href="#mockls">mockls</a></h1>
+<p>mockls is a configurable mock LSP server built into Catenary’s test suite. It speaks the LSP protocol over stdin/stdout but lets CLI flags control its capabilities, timing, and failure modes. Tests compose flags to simulate specific server behaviors without depending on real language servers.</p>
+<h2 id="motivation"><a class="header" href="#motivation">Motivation</a></h2>
+<p>Catenary’s integration tests originally depended on real language servers (bash-language-server, rust-analyzer, taplo). This caused three problems:</p>
+<ol>
+<li>
+<p><strong>Upstream coupling.</strong> Tests asserted on upstream behavior that could change at any time. A bash-lsp update could break Catenary’s test suite without any Catenary code changing.</p>
+</li>
+<li>
+<p><strong>Non-reproducible CI.</strong> Tests skipped when servers weren’t installed. Different machines ran different subsets of the suite.</p>
+</li>
+<li>
+<p><strong>No adversarial coverage.</strong> Real servers behave well. There was no way to test how Catenary handles slow indexing, dropped connections, flaky responses, or hung servers.</p>
+</li>
+</ol>
+<p>mockls solves all three: it provides a fixed target with composable behavioral axes. Bugs reported against real servers get reproduced as mockls flag combinations and stay in the suite forever.</p>
+<h2 id="design"><a class="header" href="#design">Design</a></h2>
+<p>mockls is a synchronous binary (<code>src/bin/mockls.rs</code>). No tokio — it uses <code>std::thread</code> for deferred notifications (diagnostics delays, indexing simulation). Messages are Content-Length framed JSON-RPC, the same wire format as real LSP servers.</p>
+<p>The server stores document content in memory on <code>didOpen</code>/<code>didChange</code> and provides minimal text-based intelligence: word extraction for hover, pattern matching for definitions, string search for references, and keyword scanning for symbols. This is enough to exercise all of Catenary’s LSP client code paths without implementing real language analysis.</p>
+<h2 id="cli-flags"><a class="header" href="#cli-flags">CLI Flags</a></h2>
+<p>Flags are composable behavioral axes, not named presets.</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Flag</th><th>Default</th><th>Effect</th></tr>
+</thead>
+<tbody>
+<tr><td><code>--workspace-folders</code></td><td>off</td><td>Advertise <code>workspaceFolders</code> capability with <code>changeNotifications</code></td></tr>
+<tr><td><code>--indexing-delay &lt;ms&gt;</code></td><td>0</td><td>Emit <code>window/workDoneProgress/create</code> + <code>$/progress</code> begin/end after <code>initialized</code></td></tr>
+<tr><td><code>--response-delay &lt;ms&gt;</code></td><td>0</td><td>Sleep before every response</td></tr>
+<tr><td><code>--diagnostics-delay &lt;ms&gt;</code></td><td>0</td><td>Delay before publishing diagnostics</td></tr>
+<tr><td><code>--no-diagnostics</code></td><td>off</td><td>Never publish diagnostics</td></tr>
+<tr><td><code>--diagnostics-on-save</code></td><td>off</td><td>Only publish diagnostics on <code>didSave</code>, not <code>didOpen</code>/<code>didChange</code></td></tr>
+<tr><td><code>--drop-after &lt;n&gt;</code></td><td>none</td><td>Close stdout after n responses (simulate crash)</td></tr>
+<tr><td><code>--hang-on &lt;method&gt;</code></td><td>none</td><td>Never respond to this method (repeatable)</td></tr>
+<tr><td><code>--fail-on &lt;method&gt;</code></td><td>none</td><td>Return <code>InternalError</code> (-32603) for this method (repeatable)</td></tr>
+<tr><td><code>--send-configuration-request</code></td><td>off</td><td>Send <code>workspace/configuration</code> request after initialize</td></tr>
+<tr><td><code>--publish-version</code></td><td>off</td><td>Include <code>version</code> field in <code>publishDiagnostics</code> notifications</td></tr>
+<tr><td><code>--progress-on-change</code></td><td>off</td><td>Send <code>$/progress</code> tokens around diagnostic computation on <code>didChange</code></td></tr>
+<tr><td><code>--cpu-busy &lt;ms&gt;</code></td><td>none</td><td>Burn CPU for N milliseconds after <code>didChange</code> without sending notifications</td></tr>
+</tbody>
+</table>
+</div>
+<h3 id="example-profiles"><a class="header" href="#example-profiles">Example profiles</a></h3>
+<p>A “rust-analyzer-like” test:</p>
+<pre><code>mockls --workspace-folders --indexing-delay 3000 --diagnostics-on-save --send-configuration-request
+</code></pre>
+<p>A “bash-lsp-like” test (no flags — the default):</p>
+<pre><code>mockls
+</code></pre>
+<p>A crash reproduction:</p>
+<pre><code>mockls --drop-after 3
+</code></pre>
+<p>A server that hangs on hover:</p>
+<pre><code>mockls --hang-on textDocument/hover
+</code></pre>
+<p>The flags document exactly what behavior each test targets.</p>
+<h2 id="lsp-methods"><a class="header" href="#lsp-methods">LSP Methods</a></h2>
+<h3 id="requests-respond-with-result-or-error"><a class="header" href="#requests-respond-with-result-or-error">Requests (respond with result or error)</a></h3>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Method</th><th>Behavior</th></tr>
+</thead>
+<tbody>
+<tr><td><code>initialize</code></td><td>Returns capabilities based on flags</td></tr>
+<tr><td><code>shutdown</code></td><td>Returns null</td></tr>
+<tr><td><code>textDocument/hover</code></td><td>Extracts word at position, returns as markdown code block</td></tr>
+<tr><td><code>textDocument/definition</code></td><td>Scans for definition pattern (<code>fn</code>, <code>function</code>, <code>def</code>, <code>let</code>, <code>const</code>, <code>var</code>); falls back to first occurrence</td></tr>
+<tr><td><code>textDocument/references</code></td><td>Returns all positions where the word appears in the document</td></tr>
+<tr><td><code>textDocument/documentSymbol</code></td><td>Scans for lines matching keyword patterns, returns <code>DocumentSymbol</code> array</td></tr>
+<tr><td><code>workspace/symbol</code></td><td>Searches across all stored documents</td></tr>
+</tbody>
+</table>
+</div>
+<h3 id="notifications-no-response"><a class="header" href="#notifications-no-response">Notifications (no response)</a></h3>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Method</th><th>Behavior</th></tr>
+</thead>
+<tbody>
+<tr><td><code>initialized</code></td><td>Starts indexing simulation if <code>--indexing-delay</code> is set</td></tr>
+<tr><td><code>textDocument/didOpen</code></td><td>Stores content, publishes diagnostics (unless suppressed)</td></tr>
+<tr><td><code>textDocument/didChange</code></td><td>Updates content, republishes diagnostics (unless suppressed)</td></tr>
+<tr><td><code>textDocument/didSave</code></td><td>Publishes diagnostics (unless <code>--no-diagnostics</code>)</td></tr>
+<tr><td><code>textDocument/didClose</code></td><td>Removes document from store</td></tr>
+<tr><td><code>workspace/didChangeWorkspaceFolders</code></td><td>Accepted silently</td></tr>
+<tr><td><code>exit</code></td><td>Exits the process</td></tr>
+</tbody>
+</table>
+</div>
+<h3 id="server-to-client-messages"><a class="header" href="#server-to-client-messages">Server-to-client messages</a></h3>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Message</th><th>When</th></tr>
+</thead>
+<tbody>
+<tr><td><code>textDocument/publishDiagnostics</code></td><td>One warning per document on line 0: “mockls: mock diagnostic”</td></tr>
+<tr><td><code>window/workDoneProgress/create</code></td><td>Before indexing simulation</td></tr>
+<tr><td><code>$/progress</code> (begin/end)</td><td>During indexing simulation (<code>--indexing-delay</code>) or around diagnostics (<code>--progress-on-change</code>)</td></tr>
+<tr><td><code>workspace/configuration</code></td><td>If <code>--send-configuration-request</code> is set</td></tr>
+</tbody>
+</table>
+</div>
+<h2 id="diagnostics-trigger-behavior"><a class="header" href="#diagnostics-trigger-behavior">Diagnostics Trigger Behavior</a></h2>
+<p>mockls never publishes diagnostics spontaneously at startup — only in response to document events. This models the pattern where <code>has_published_diagnostics</code> stays false during warmup.</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Config</th><th>didOpen</th><th>didChange</th><th>didSave</th></tr>
+</thead>
+<tbody>
+<tr><td>Default</td><td>publishes</td><td>publishes</td><td>publishes</td></tr>
+<tr><td><code>--diagnostics-on-save</code></td><td>no</td><td>no</td><td>publishes</td></tr>
+<tr><td><code>--no-diagnostics</code></td><td>no</td><td>no</td><td>no</td></tr>
+<tr><td><code>--diagnostics-delay &lt;ms&gt;</code></td><td>publishes after delay</td><td>publishes after delay</td><td>publishes after delay</td></tr>
+<tr><td><code>--publish-version</code></td><td>version field included</td><td>version field included</td><td>version field included</td></tr>
+<tr><td><code>--progress-on-change</code></td><td>no</td><td>progress + publishes</td><td>no</td></tr>
+<tr><td><code>--cpu-busy &lt;ms&gt;</code></td><td>no</td><td>burns CPU, no publish</td><td>no</td></tr>
+</tbody>
+</table>
+</div>
+<p>These map to specific code paths in Catenary’s <code>wait_for_diagnostics_update</code>:</p>
+<ul>
+<li><strong>Default:</strong> Server publishes promptly on <code>didOpen</code>, exercises Phase 1 generation advance via the <code>ProcessMonitor</code> strategy (no progress tokens, no version).</li>
+<li><strong><code>--diagnostics-on-save</code>:</strong> Server ignores <code>didOpen</code>/<code>didChange</code>. Catenary sends <code>didSave</code> unconditionally after every change, which triggers mockls to publish.</li>
+<li><strong><code>--no-diagnostics</code>:</strong> Exercises the “never published” grace period timeout path. Catenary handles servers that never emit diagnostics without hanging.</li>
+<li><strong><code>--diagnostics-delay</code>:</strong> Diagnostics arrive late, exercises Phase 1 activity tracking.</li>
+<li><strong><code>--publish-version</code>:</strong> Exercises the <code>Version</code> strategy — Catenary waits for <code>publishDiagnostics</code> with a version field, matching generation advance.</li>
+<li><strong><code>--progress-on-change</code>:</strong> Exercises the <code>TokenMonitor</code> strategy — Catenary waits for <code>$/progress</code> Active -&gt; Idle cycle around diagnostic computation.</li>
+<li><strong><code>--cpu-busy</code>:</strong> Exercises the <code>ProcessMonitor</code> strategy under load — server burns CPU without sending progress or diagnostics, testing trust-based patience decay.</li>
+</ul>
+<h2 id="usage-in-tests"><a class="header" href="#usage-in-tests">Usage in Tests</a></h2>
+<h3 id="integration-tests-testsmcp_integrationrs"><a class="header" href="#integration-tests-testsmcp_integrationrs">Integration tests (<code>tests/mcp_integration.rs</code>)</a></h3>
+<p>The <code>mockls_lsp_arg</code> helper builds <code>--lsp</code> arguments for <code>BridgeProcess::spawn</code>:</p>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>fn mockls_lsp_arg(lang: &amp;str, flags: &amp;str) -&gt; String {
+    let bin = env!("CARGO_BIN_EXE_mockls");
+    if flags.is_empty() {
+        format!("{lang}:{bin}")
+    } else {
+        format!("{lang}:{bin} {flags}")
+    }
+}
+<span class="boring">}</span></code></pre>
+<p>Tests iterate over profiles — same test logic, different mockls behavior each iteration:</p>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>let profiles: &amp;[(&amp;str, &amp;str)] = &amp;[
+    ("clean", ""),
+    ("workspace-folders", "--workspace-folders"),
+];
+
+for (name, flags) in profiles {
+    let lsp = mockls_lsp_arg("shellscript", flags);
+    let mut bridge = BridgeProcess::spawn(&amp;[&amp;lsp], "/tmp")?;
+    // ... test logic ...
+}
+<span class="boring">}</span></code></pre>
+<h3 id="unit-tests-in-manager-srclspmanagerrs"><a class="header" href="#unit-tests-in-manager-srclspmanagerrs">Unit tests in manager (<code>src/lsp/manager.rs</code>)</a></h3>
+<p>The <code>mockls_config()</code> and <code>mockls_workspace_folders_config()</code> helpers create <code>Config</code> structs that point to the mockls binary. This replaced the old <code>bash_lsp_config()</code> that required bash-language-server to be installed.</p>
+<h3 id="direct-client-tests-testslsp_integrationrs"><a class="header" href="#direct-client-tests-testslsp_integrationrs">Direct client tests (<code>tests/lsp_integration.rs</code>)</a></h3>
+<p>Tests exercise <code>LspClient</code> directly against mockls, verifying client-side protocol handling without the bridge layer.</p>
+<h2 id="running-mockls-tests"><a class="header" href="#running-mockls-tests">Running mockls Tests</a></h2>
+<pre><code class="language-bash"># All mockls tests
+make test T=mockls
+
+# Sync roots tests (now use mockls)
+make test T=test_sync_roots
+
+# Full suite (includes all mockls + real-server smoke tests)
+make test
+</code></pre>
+<h2 id="relationship-to-real-server-tests"><a class="header" href="#relationship-to-real-server-tests">Relationship to Real-Server Tests</a></h2>
+<p>All existing tests that use real language servers remain in the suite. They serve a different purpose: verifying Catenary works with actual LSP implementations. They continue to skip when the server isn’t installed. mockls tests and real-server tests are complementary:</p>
+<ul>
+<li><strong>mockls tests</strong> verify Catenary’s protocol handling against a controlled, deterministic server. They always run.</li>
+<li><strong>Real-server tests</strong> verify end-to-end behavior against production LSP implementations. They run when servers are available.</li>
+</ul>
+<h2 id="source"><a class="header" href="#source">Source</a></h2>
+<ul>
+<li><code>src/bin/mockls.rs</code> — the mock server binary and its unit tests</li>
+<li><code>Cargo.toml</code> — <code>[[bin]]</code> entry for mockls</li>
+</ul>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="roadmap"><a class="header" href="#roadmap">Roadmap</a></h1>
 <p>Current version: <strong>v1.1.0</strong></p>

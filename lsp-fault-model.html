@@ -35,10 +35,10 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-5977e505.js";
+            window.path_to_searchindex_js = "searchindex-7e0df5cd.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="toc-b2339312.js"></script>
+        <script src="toc-9c5e5c2a.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -293,8 +293,13 @@
 <h3 id="error-attribution-resolved"><a class="header" href="#error-attribution-resolved"><del>Error Attribution</del> (Resolved)</a></h3>
 <p>All LSP-originated errors are now prefixed with <code>[language]</code>, e.g., <code>[rust] request timed out</code> or <code>[python] server closed connection</code>. The <code>LspClient</code> stores its language identifier and includes it in all error messages from the <code>request()</code> method. Handler-level errors (e.g., “server is no longer running”) also include the language prefix.</p>
 <h3 id="timeout-ambiguity-resolved"><a class="header" href="#timeout-ambiguity-resolved"><del>Timeout Ambiguity</del> (Resolved)</a></h3>
-<p><code>wait_for_diagnostics_update</code> now returns a three-variant enum (<code>DiagnosticsWaitResult</code>) instead of a boolean, distinguishing <code>Updated</code>, <code>Inactive</code> (server alive but silent), and <code>ServerDied</code>. Phase 1 tracks server activity (notification counter + progress tokens) and waits indefinitely while the server shows signs of life. When the server goes completely silent for <code>DIAGNOSTICS_TIMEOUT</code> (30s) but is still alive, it returns <code>Inactive</code> rather than aborting.</p>
-<p>Callers (<code>handle_diagnostics</code> in <code>handler.rs</code>, <code>process_file_inner</code> in <code>notify.rs</code>) implement a nudge-and-retry loop: on <code>Inactive</code>, they re-send <code>didSave</code> to wake the server and retry up to 3 times. This handles CPU-starved servers under concurrent load that may miss or deprioritize the initial notification. On <code>ServerDied</code>, callers report the error. After all retries exhaust, callers proceed with cached diagnostics (graceful degradation) rather than returning an error.</p>
+<p><code>wait_for_diagnostics_update</code> returns a two-variant enum (<code>DiagnosticsWaitResult</code>): <code>Updated</code> or <code>ServerDied</code>. Each LSP server is assigned a <code>DiagnosticsStrategy</code> based on runtime observations:</p>
+<ul>
+<li><strong>Version</strong> — server includes <code>version</code> in <code>publishDiagnostics</code>. Wait for generation advance.</li>
+<li><strong><code>TokenMonitor</code></strong> — server sends <code>$/progress</code> tokens. Wait for Active -&gt; Idle cycle with a hard timeout.</li>
+<li><strong><code>ProcessMonitor</code></strong> — no progress tokens, no version. Poll CPU time via <code>/proc/&lt;pid&gt;/stat</code> (Linux) or <code>ps</code> (macOS). Trust-based patience decays on consecutive timeouts without diagnostics.</li>
+</ul>
+<p>All strategies include a Phase 2 settle: 2 seconds of silence with no active progress tokens, catching servers that publish diagnostics in multiple rounds. Callers send <code>didSave</code> unconditionally after every change (handling servers that only run diagnostics on save) and make a single <code>wait_for_diagnostics_update</code> call — no retry loop.</p>
 <h3 id="uri-trust"><a class="header" href="#uri-trust">URI Trust</a></h3>
 <p><strong>Location:</strong> Multiple points in <code>src/bridge/handler.rs</code> — <code>format_definition_response</code>, <code>find_symbol_in_workspace_response</code>, <code>format_locations_with_definition</code>, etc.</p>
 <p><code>uri.path()</code> is extracted from LSP responses and converted to <code>PathBuf</code> without validation. A buggy server could return URIs like <code>file:///etc/passwd</code> or <code>file:///workspace/../../../etc/shadow</code>.</p>
